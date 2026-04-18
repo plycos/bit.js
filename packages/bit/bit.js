@@ -61,8 +61,26 @@ export const nothing = litNothing;
  *
  * @example
  * props: {
- *     user: { default: null }
+ *     user: { default: null },
  *     count: { default: 0 }
+ * }
+ */
+
+/**
+ * @typedef {Object} AttrOptions
+ * @property {string} [default=''] - The default value if the attribute is not present.
+ * @property {Function} [type] - Optional coercion function applied to the raw string value (e.g. Number, Boolean).
+ */
+
+/**
+ * @typedef {Object.<string, AttrOptions>} AttrsDefinition
+ * A map of attribute names to their options.
+ *
+ * @example
+ * attrs: {
+ *     label: { default: 'Click me' },
+ *     count: { default: '0', type: Number },
+ *     disabled: { default: false, type: Boolean }
  * }
  */
 
@@ -70,6 +88,7 @@ export const nothing = litNothing;
  * @typedef {Object} SetupContext
  * @property {HTMLElement} el - The component's host element.
  * @property {Object.<string, () => *>} props - Reactive prop getters, each returning the current prop value or its default.
+ * @property {Object.<string, () => *>} attrs - Reactive attr getters, each returning the current attribute value or its default.
  */
 
 /**
@@ -81,9 +100,13 @@ export const nothing = litNothing;
  * Attach a shadow root instead of rendering into the element directly.
  *
  * @property {PropsDefinition} [props]
- * JS-only props passed to the component programmatically. Each prop is wrapped in a computed
- * and available as a signal getter via the setup context. Falls back to its default value
+ * JS-only props passed to the component programmatically. Each prop is wrapped in a signal
+ * and available as a getter via the setup context. Falls back to its default value
  * until the property is set by a parent.
+ *
+ * @property {AttrsDefinition} [attrs]
+ * HTML attributes to observe. Each attr is backed by a signal updated via attributeChangedCallback.
+ * Available as a getter via the setup context. Optionally coerced via the type option.
  *
  * @property {(context: SetupContext) => () => TemplateResult} setup
  * Runs once on connect. Returns a render function that is wrapped in an effect -
@@ -122,14 +145,30 @@ export function defineComponent(options) {
 		name,
 		shadow = false,
 		props = {},
+		attrs = {},
 		setup,
 		styles,
 		autoRegister = true
 	} = options;
 
+	const attrKeys = Object.keys(attrs);
+
 	class BitComponent extends HTMLElement {
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
 		#cleanups = [];
+		#attrSignalSetters = {};
+
+		static get observedAttributes() {
+			return attrKeys;
+		}
+
+		attributeChangedCallback(attrName, _oldValue, newValue) {
+			const setter = this.#attrSignalSetters[attrName];
+			if (setter) {
+				const config = attrs[attrName];
+				setter(coerce(newValue, config.type));
+			}
+		}
 
 		connectedCallback() {
 			if (styles) {
@@ -153,9 +192,19 @@ export function defineComponent(options) {
 				resolvedProps[key] = get;
 			});
 
+			const resolvedAttrs = {};
+			Object.entries(attrs).forEach(([key, config]) => {
+				const raw = this.getAttribute(key);
+				const initial = raw !== null ? coerce(raw, config.type) : (config.default ?? '');
+				const [get, set] = signal(initial);
+				this.#attrSignalSetters[key] = set;
+				resolvedAttrs[key] = get;
+			});
+
 			const tmpl = setup({
 				el: this,
-				props: resolvedProps
+				props: resolvedProps,
+				attrs: resolvedAttrs
 			});
 
 			this.#cleanups.push(
@@ -187,4 +236,21 @@ function injectGlobalStyles(name, styles) {
 	sheet.id = id;
 	sheet.textContent = styles;
 	document.head.appendChild(sheet);
+}
+
+/**
+ * Coerces a raw attribute string value to the specified type.
+ * Returns null if the attribute has been removed.
+ * Boolean coercion treats any value except "false" as true.
+ * All other types are coerced by calling type(value).
+ *
+ * @param {string|null} value - The raw attribute value from the DOM
+ * @param {NumberConstructor|BooleanConstructor|StringConstructor} [type] - Optional constructor to coerce the value (e.g. Number, Boolean, String)
+ * @returns {string|number|boolean|null} The coerced value, or the raw string if no type is provided
+ */
+function coerce(value, type) {
+	if (value === null) return null;
+	if (type === Boolean) return value !== 'false';
+	if (type) return type(value);
+	return value;
 }
