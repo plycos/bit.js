@@ -55,7 +55,11 @@ export function computed(fn) {
  * stop();		// unsubscribes
  */
 export function effect(fn) {
-	const computed = new Signal.Computed(fn);
+	let cleanup;
+	const computed = new Signal.Computed(() => {
+		if (typeof cleanup === 'function') cleanup();
+		cleanup = fn();
+	});
 	let pending = false;
 
 	const watcher = new Signal.subtle.Watcher(() => {
@@ -72,7 +76,11 @@ export function effect(fn) {
 	watcher.watch(computed);
 	computed.get();
 
-	return () => watcher.unwatch(computed);
+	return () => {
+		watcher.unwatch(computed);
+		if (typeof cleanup === 'function') cleanup();
+		cleanup = undefined;
+	};
 }
 
 /**
