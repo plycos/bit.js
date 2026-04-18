@@ -51,22 +51,6 @@ export const css = (strings, ...values) =>
 export const nothing = litNothing;
 
 /**
- * @typedef {Object} PropOptions
- * @property {*} default - The default value for the prop, used until the property is set.
- */
-
-/**
- * @typedef {Object.<string, PropOptions>} PropsDefinition
- * A map of prop names to their options.
- *
- * @example
- * props: {
- *     user: { default: null },
- *     count: { default: 0 }
- * }
- */
-
-/**
  * @typedef {Object} AttrOptions
  * @property {string} [default=''] - The default value if the attribute is not present.
  * @property {Function} [type] - Optional coercion function applied to the raw string value (e.g. Number, Boolean).
@@ -85,6 +69,22 @@ export const nothing = litNothing;
  */
 
 /**
+ * @typedef {Object} PropOptions
+ * @property {*} default - The default value for the prop, used until the property is set.
+ */
+
+/**
+ * @typedef {Object.<string, PropOptions>} PropsDefinition
+ * A map of prop names to their options.
+ *
+ * @example
+ * props: {
+ *     user: { default: null },
+ *     count: { default: 0 }
+ * }
+ */
+
+/**
  * @typedef {Object} SetupContext
  * @property {HTMLElement} el - The component's host element.
  * @property {Object.<string, () => *>} props - Reactive prop getters, each returning the current prop value or its default.
@@ -99,14 +99,14 @@ export const nothing = litNothing;
  * @property {boolean} [shadow=false]
  * Attach a shadow root instead of rendering into the element directly.
  *
+ * @property {AttrsDefinition} [attrs]
+ * HTML attributes to observe. Each attr is backed by a signal updated via attributeChangedCallback.
+ * Available as a getter via the setup context. Optionally coerced via the type option.
+ *
  * @property {PropsDefinition} [props]
  * JS-only props passed to the component programmatically. Each prop is wrapped in a signal
  * and available as a getter via the setup context. Falls back to its default value
  * until the property is set by a parent.
- *
- * @property {AttrsDefinition} [attrs]
- * HTML attributes to observe. Each attr is backed by a signal updated via attributeChangedCallback.
- * Available as a getter via the setup context. Optionally coerced via the type option.
  *
  * @property {(context: SetupContext) => () => TemplateResult} setup
  * Runs once on connect. Returns a render function that is wrapped in an effect -
@@ -144,8 +144,8 @@ export function defineComponent(options) {
 	const {
 		name,
 		shadow = false,
-		props = {},
 		attrs = {},
+		props = {},
 		setup,
 		styles,
 		autoRegister = true
@@ -181,6 +181,15 @@ export function defineComponent(options) {
 				}
 			}
 
+			const resolvedAttrs = {};
+			Object.entries(attrs).forEach(([key, config]) => {
+				const raw = this.getAttribute(key);
+				const initial = raw !== null ? coerce(raw, config.type) : (config.default ?? '');
+				const [get, set] = signal(initial);
+				this.#attrSignalSetters[key] = set;
+				resolvedAttrs[key] = get;
+			});
+
 			const resolvedProps = {};
 			Object.entries(props).forEach(([key, config]) => {
 				const [get, set] = signal(config.default);
@@ -190,15 +199,6 @@ export function defineComponent(options) {
 					configurable: true
 				});
 				resolvedProps[key] = get;
-			});
-
-			const resolvedAttrs = {};
-			Object.entries(attrs).forEach(([key, config]) => {
-				const raw = this.getAttribute(key);
-				const initial = raw !== null ? coerce(raw, config.type) : (config.default ?? '');
-				const [get, set] = signal(initial);
-				this.#attrSignalSetters[key] = set;
-				resolvedAttrs[key] = get;
 			});
 
 			const tmpl = setup({
