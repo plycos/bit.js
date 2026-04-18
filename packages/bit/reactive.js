@@ -56,15 +56,18 @@ export function computed(fn) {
  */
 export function effect(fn) {
 	const computed = new Signal.Computed(fn);
+	let pending = false;
 
 	const watcher = new Signal.subtle.Watcher(() => {
-		queueMicrotask(run);
+		if (!pending) {
+			pending = true;
+			queueMicrotask(() => {
+				pending = false;
+				watcher.watch();
+				computed.get();
+			});
+		}
 	});
-
-	function run() {
-		watcher.watch();
-		computed.get();
-	}
 
 	watcher.watch(computed);
 	computed.get();
