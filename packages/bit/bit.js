@@ -203,8 +203,8 @@ export function defineComponent(options) {
 
 			const tmpl = setup({
 				el: this,
-				props: resolvedProps,
-				attrs: resolvedAttrs
+				attrs: resolvedAttrs,
+				props: resolvedProps
 			});
 
 			this.#cleanups.push(
