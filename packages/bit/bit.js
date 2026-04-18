@@ -84,6 +84,7 @@ export const nothing = litNothing;
  * @typedef {Object} EmitOptions
  * @property {boolean} [bubbles=true] - Whether the event bubbles up the DOM tree.
  * @property {boolean} [composed=true] - Whether the event crosses the shadow DOM boundary.
+ * @property {boolean} [cancelable=false] - Whether the event can be canceled by a listener calling preventDefault(). When true, emit returns false if the event was canceled.
  */
 
 /**
@@ -226,7 +227,8 @@ export function defineComponent(options) {
 				this.dispatchEvent(new CustomEvent(eventName, {
 					detail,
 					bubbles: config.bubbles ?? true,
-					composed: config.composed ?? true
+					composed: config.composed ?? true,
+					cancelable: config.cancelable ?? false
 				}));
 			}
 
