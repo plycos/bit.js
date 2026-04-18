@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Count</title>
+  <script lang="javascript" src="my-counter.js" type="module"></script>
+</head>
+<body>
+<input id="buttonText" type="text" placeholder="Increment" value="Increment" />
+<my-counter></my-counter>
+<script type="module">
+  import { signal, effect } from "./packages/bit/reactive.js";
+
+  const buttonTextInput = document.querySelector('#buttonText');
+  const counter = document.querySelector('my-counter');
+
+  const [text, setText] = signal('Increment');
+
+  effect(() => {
+    counter.buttonText = text();
+  });
+
+  buttonTextInput.addEventListener('keyup', () => {
+    setText(buttonTextInput.value);
+  });
+</script>
+</body>
+</html>
