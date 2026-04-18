@@ -162,7 +162,8 @@ export function defineComponent(options) {
 			return attrKeys;
 		}
 
-		attributeChangedCallback(attrName, _oldValue, newValue) {
+		attributeChangedCallback(attrName, oldValue, newValue) {
+			if (oldValue === newValue) return;
 			const setter = this.#attrSignalSetters[attrName];
 			if (setter) {
 				const config = attrs[attrName];

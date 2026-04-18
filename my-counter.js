@@ -15,7 +15,11 @@ const myCounter = defineComponent({
     props: {
         buttonText: { default: 'Increment' }
     },
-    setup: ({ props }) => {
+    attrs: {
+        step: { default: 1, type: Number },
+        label: { default: 'Counter' }
+    },
+    setup: ({ props, attrs }) => {
         const [count, setCount] = signal(0);
         const double = computed(() => count() * 2);
         const triple = computed(() => count() * 3);
@@ -26,10 +30,11 @@ const myCounter = defineComponent({
         });
 
         function increment() {
-            setCount(count() + 1);
+            setCount(count() + attrs.step());
         }
 
         return () => html`
+            <h3>${attrs.label()}</h3>
             <button @click=${increment}>${props.buttonText()}</button>
             <p>Count: ${count()}</p>
             <p>Double: ${double()}</p>
