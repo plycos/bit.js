@@ -12,14 +12,17 @@ import {
 const myCounter = defineComponent({
     name: 'my-counter',
     shadow: false,
-    props: {
-        buttonText: { default: 'Increment' }
-    },
     attrs: {
         step: { default: 1, type: Number },
         label: { default: 'Counter' }
     },
-    setup: ({ props, attrs }) => {
+    props: {
+        buttonText: { default: 'Increment' }
+    },
+    emits: {
+        increment: {}
+    },
+    setup: ({ props, attrs, emit }) => {
         const [count, setCount] = signal(0);
         const double = computed(() => count() * 2);
         const triple = computed(() => count() * 3);
@@ -31,6 +34,7 @@ const myCounter = defineComponent({
 
         function increment() {
             setCount(count() + attrs.step());
+            emit('increment', { count: count() });
         }
 
         return () => html`

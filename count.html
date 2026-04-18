@@ -20,6 +20,10 @@
     counter.buttonText = text();
   });
 
+  counter.addEventListener('increment', (e) => {
+    console.log('Count', e.detail.count);
+  });
+
   buttonTextInput.addEventListener('keyup', () => {
     setText(buttonTextInput.value);
   });

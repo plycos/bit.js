@@ -1,9 +1,5 @@
-import {
-	html as litHtml,
-	nothing as litNothing,
-	render
-} from "../vendor/lit-html.js";
-import { signal, effect } from "./reactive.js";
+import {html as litHtml, nothing as litNothing, render} from "../vendor/lit-html.js";
+import {effect, signal} from "./reactive.js";
 
 /**
  * @typedef {Object} TemplateResult
@@ -83,12 +79,30 @@ export const nothing = litNothing;
  *     count: { default: 0 }
  * }
  */
+/**
+
+ * @typedef {Object} EmitOptions
+ * @property {boolean} [bubbles=true] - Whether the event bubbles up the DOM tree.
+ * @property {boolean} [composed=true] - Whether the event crosses the shadow DOM boundary.
+ */
+
+/**
+ * @typedef {Object.<string, EmitOptions>} EmitsDefinition
+ * A map of event names to their options.
+ *
+ * @example
+ * emits: {
+ *     change: { bubbles: true, composed: true },
+ *     selected: {}
+ * }
+ */
 
 /**
  * @typedef {Object} SetupContext
  * @property {HTMLElement} el - The component's host element.
- * @property {Object.<string, () => *>} props - Reactive prop getters, each returning the current prop value or its default.
  * @property {Object.<string, () => *>} attrs - Reactive attr getters, each returning the current attribute value or its default.
+ * @property {Object.<string, () => *>} props - Reactive prop getters, each returning the current prop value or its default.
+ * @property {(event: string, detail?: *) => void} emit - Dispatches a declared CustomEvent from the component.
  */
 
 /**
@@ -107,6 +121,10 @@ export const nothing = litNothing;
  * JS-only props passed to the component programmatically. Each prop is wrapped in a signal
  * and available as a getter via the setup context. Falls back to its default value
  * until the property is set by a parent.
+ *
+ * @property {EmitsDefinition} [emits]
+ * Declares the custom events this component can dispatch. Each event is dispatched via
+ * the emit function in the setup context.
  *
  * @property {(context: SetupContext) => () => TemplateResult} setup
  * Runs once on connect. Returns a render function that is wrapped in an effect -
@@ -146,6 +164,7 @@ export function defineComponent(options) {
 		shadow = false,
 		attrs = {},
 		props = {},
+		emits = {},
 		setup,
 		styles,
 		autoRegister = true
@@ -202,10 +221,20 @@ export function defineComponent(options) {
 				resolvedProps[key] = get;
 			});
 
+			function emit(eventName, detail) {
+				const config = emits[eventName] ?? {};
+				this.dispatchEvent(new CustomEvent(eventName, {
+					detail,
+					bubbles: config.bubbles ?? true,
+					composed: config.composed ?? true
+				}));
+			}
+
 			const tmpl = setup({
 				el: this,
 				attrs: resolvedAttrs,
-				props: resolvedProps
+				props: resolvedProps,
+				emit: emit.bind(this)
 			});
 
 			this.#cleanups.push(
