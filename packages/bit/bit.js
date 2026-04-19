@@ -99,11 +99,7 @@ export const nothing = litNothing;
  */
 
 /**
- * @typedef {Object} SetupContext
- * @property {HTMLElement} el - The component's host element.
- * @property {Object.<string, () => *>} attrs - Reactive attr getters, each returning the current attribute value or its default.
- * @property {Object.<string, () => *>} props - Reactive prop getters, each returning the current prop value or its default.
- * @property {(event: string, detail?: *) => boolean} emit - Dispatches a declared CustomEvent from the component. Returns false if the event was canceled.
+ * @typedef {Object} Lifecycle
  * @property {(fn: () => void) => void} onBeforeMount - Runs synchronously before the first render.
  * @property {(fn: () => void) => void} onMounted - Runs after the first render, safe to access the DOM and template refs.
  * @property {(fn: () => void) => void} onUnmounted - Runs when the component is removed from the DOM.
@@ -114,6 +110,15 @@ export const nothing = litNothing;
  * @property {(fn: () => void) => void} onFormReset - Runs when the associated form is reset.
  * @property {(fn: (disabled: boolean) => void) => void} onFormDisabled - Runs when the component is disabled via the form.
  * @property {(fn: (state: *, reason: string) => void) => void} onFormStateRestore - Runs when the browser restores the component's form state.
+ */
+
+/**
+ * @typedef {Object} SetupContext
+ * @property {HTMLElement} el - The component's host element.
+ * @property {Object.<string, () => *>} attrs - Reactive attr getters, each returning the current attribute value or its default.
+ * @property {Object.<string, () => *>} props - Reactive prop getters, each returning the current prop value or its default.
+ * @property {(event: string, detail?: *) => boolean} emit - Dispatches a declared CustomEvent from the component. Returns false if the event was canceled.
+ * @property {Lifecycle} lifecycle - Lifecycle hooks for the component. Pass to composables for automatic cleanup.
  * @property {ElementInternals} [internals] - The ElementInternals instance, available when formAssociated is true.
  */
 
@@ -282,22 +287,26 @@ export function defineComponent(options) {
 				}));
 			}
 
+			const lifecycle = {
+				onBeforeMount: (fn) => fn(),
+				onMounted: (fn) => this.#mountedCallbacks.push(fn),
+				onUnmounted: (fn) => this.#unmountedCallbacks.push(fn),
+				onUpdated: (fn) => this.#updatedCallbacks.push(fn),
+				onAdopted: (fn) => this.#adoptedCallbacks.push(fn),
+				onAttributeChanged: (fn) => this.#attrChangedCallbacks.push(fn),
+				onFormAssociated: (fn) => this.#formAssociatedCallbacks.push(fn),
+				onFormReset: (fn) => this.#formResetCallbacks.push(fn),
+				onFormDisabled: (fn) => this.#formDisabledCallbacks.push(fn),
+				onFormStateRestore: (fn) => this.#formStateRestoreCallbacks.push(fn)
+			};
+
 			const tmpl = setup({
 				el: this,
 				attrs: resolvedAttrs,
 				props: resolvedProps,
 				emit: emit.bind(this),
 				internals: this.#internals,
-				onMounted: (fn) => this.#mountedCallbacks.push(fn),
-				onUnmounted: (fn) => this.#unmountedCallbacks.push(fn),
-				onAdopted: (fn) => this.#adoptedCallbacks.push(fn),
-				onAttributeChanged: (fn) => this.#attrChangedCallbacks.push(fn),
-				onUpdated: (fn) => this.#updatedCallbacks.push(fn),
-				onBeforeMount: (fn) => fn(),
-				onFormAssociated: (fn) => this.#formAssociatedCallbacks.push(fn),
-				onFormReset: (fn) => this.#formResetCallbacks.push(fn),
-				onFormDisabled: (fn) => this.#formDisabledCallbacks.push(fn),
-				onFormStateRestore: (fn) => this.#formStateRestoreCallbacks.push(fn)
+				lifecycle
 			});
 
 			this.#cleanups.push(
