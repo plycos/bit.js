@@ -103,7 +103,13 @@ export const nothing = litNothing;
  * @property {HTMLElement} el - The component's host element.
  * @property {Object.<string, () => *>} attrs - Reactive attr getters, each returning the current attribute value or its default.
  * @property {Object.<string, () => *>} props - Reactive prop getters, each returning the current prop value or its default.
- * @property {(event: string, detail?: *) => void} emit - Dispatches a declared CustomEvent from the component.
+ * @property {(event: string, detail?: *) => boolean} emit - Dispatches a declared CustomEvent from the component. Returns false if the event was canceled.
+ * @property {(fn: () => void) => void} onBeforeMount - Runs synchronously before the first render.
+ * @property {(fn: () => void) => void} onMounted - Runs after the first render, safe to access the DOM and template refs.
+ * @property {(fn: () => void) => void} onUnmounted - Runs when the component is removed from the DOM.
+ * @property {(fn: () => void) => void} onUpdated - Runs after every re-render.
+ * @property {(fn: () => void) => void} onAdopted - Runs when the component is moved to a new document.
+ * @property {(fn: (name: string, oldValue: string|null, newValue: string|null) => void) => void} onAttributeChanged - Runs when an observed attribute changes.
  */
 
 /**
@@ -177,6 +183,11 @@ export function defineComponent(options) {
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
 		#cleanups = [];
 		#attrSignalSetters = {};
+		#mountedCallbacks = [];
+		#unmountedCallbacks = [];
+		#adoptedCallbacks = [];
+		#attrChangedCallbacks = [];
+		#updatedCallbacks = [];
 
 		static get observedAttributes() {
 			return attrKeys;
@@ -189,6 +200,11 @@ export function defineComponent(options) {
 				const config = attrs[attrName];
 				setter(coerce(newValue, config.type));
 			}
+			this.#attrChangedCallbacks.forEach(fn => fn(attrName, oldValue, newValue));
+		}
+
+		adoptedCallback() {
+			this.#adoptedCallbacks.forEach(fn => fn());
 		}
 
 		connectedCallback() {
@@ -224,7 +240,7 @@ export function defineComponent(options) {
 
 			function emit(eventName, detail) {
 				const config = emits[eventName] ?? {};
-				this.dispatchEvent(new CustomEvent(eventName, {
+				return this.dispatchEvent(new CustomEvent(eventName, {
 					detail,
 					bubbles: config.bubbles ?? true,
 					composed: config.composed ?? true,
@@ -236,16 +252,29 @@ export function defineComponent(options) {
 				el: this,
 				attrs: resolvedAttrs,
 				props: resolvedProps,
-				emit: emit.bind(this)
+				emit: emit.bind(this),
+				onMounted: (fn) => this.#mountedCallbacks.push(fn),
+				onUnmounted: (fn) => this.#unmountedCallbacks.push(fn),
+				onAdopted: (fn) => this.#adoptedCallbacks.push(fn),
+				onAttributeChanged: (fn) => this.#attrChangedCallbacks.push(fn),
+				onUpdated: (fn) => this.#updatedCallbacks.push(fn),
+				onBeforeMount: (fn) => fn()
 			});
 
 			this.#cleanups.push(
-				effect(() => render(tmpl(), this.#root))
+				effect(() => {
+					render(tmpl(), this.#root);
+					this.#updatedCallbacks.forEach(fn => fn());
+				})
 			);
+
+			queueMicrotask(() => this.#mountedCallbacks.forEach(fn => fn()));
 		}
 
 		disconnectedCallback() {
+			this.#unmountedCallbacks.forEach(fn => fn());
 			this.#cleanups.forEach((fn) => fn());
+			this.#cleanups = [];
 		}
 	}
 
