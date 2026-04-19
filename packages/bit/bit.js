@@ -110,6 +110,11 @@ export const nothing = litNothing;
  * @property {(fn: () => void) => void} onUpdated - Runs after every re-render.
  * @property {(fn: () => void) => void} onAdopted - Runs when the component is moved to a new document.
  * @property {(fn: (name: string, oldValue: string|null, newValue: string|null) => void) => void} onAttributeChanged - Runs when an observed attribute changes.
+ * @property {(fn: (form: HTMLFormElement|null) => void) => void} onFormAssociated - Runs when the component is associated with a form element.
+ * @property {(fn: () => void) => void} onFormReset - Runs when the associated form is reset.
+ * @property {(fn: (disabled: boolean) => void) => void} onFormDisabled - Runs when the component is disabled via the form.
+ * @property {(fn: (state: *, reason: string) => void) => void} onFormStateRestore - Runs when the browser restores the component's form state.
+ * @property {ElementInternals} [internals] - The ElementInternals instance, available when formAssociated is true.
  */
 
 /**
@@ -140,8 +145,11 @@ export const nothing = litNothing;
  * @property {string} [styles]
  * CSS string injected into the shadow root (shadow mode) or as a scoped `<style>` tag (light DOM).
  *
+ * @property {boolean} [formAssociated=false]
+ * Enables form participation via ElementInternals. When true, internals is available in the setup context.
+ *
  * @property {boolean} [autoRegister=true]
- * Automatically register the component with the custom elements registry.
+ * Automatically register the component with the custom elements' registry.
  */
 
 /**
@@ -172,6 +180,7 @@ export function defineComponent(options) {
 		attrs = {},
 		props = {},
 		emits = {},
+		formAssociated = false,
 		setup,
 		styles,
 		autoRegister = true
@@ -188,6 +197,15 @@ export function defineComponent(options) {
 		#adoptedCallbacks = [];
 		#attrChangedCallbacks = [];
 		#updatedCallbacks = [];
+		#formAssociatedCallbacks = [];
+		#formResetCallbacks = [];
+		#formDisabledCallbacks = [];
+		#formStateRestoreCallbacks = [];
+		#internals = formAssociated ? this.attachInternals() : null;
+
+		static get formAssociated() {
+			return formAssociated;
+		}
 
 		static get observedAttributes() {
 			return attrKeys;
@@ -205,6 +223,22 @@ export function defineComponent(options) {
 
 		adoptedCallback() {
 			this.#adoptedCallbacks.forEach(fn => fn());
+		}
+
+		formAssociatedCallback(form) {
+			this.#formAssociatedCallbacks.forEach(fn => fn(form));
+		}
+
+		formResetCallback() {
+			this.#formResetCallbacks.forEach(fn => fn());
+		}
+
+		formDisabledCallback(disabled) {
+			this.#formDisabledCallbacks.forEach(fn => fn(disabled));
+		}
+
+		formStateRestoreCallback(state, reason) {
+			this.#formStateRestoreCallbacks.forEach(fn => fn(state, reason));
 		}
 
 		connectedCallback() {
@@ -253,12 +287,17 @@ export function defineComponent(options) {
 				attrs: resolvedAttrs,
 				props: resolvedProps,
 				emit: emit.bind(this),
+				internals: this.#internals,
 				onMounted: (fn) => this.#mountedCallbacks.push(fn),
 				onUnmounted: (fn) => this.#unmountedCallbacks.push(fn),
 				onAdopted: (fn) => this.#adoptedCallbacks.push(fn),
 				onAttributeChanged: (fn) => this.#attrChangedCallbacks.push(fn),
 				onUpdated: (fn) => this.#updatedCallbacks.push(fn),
-				onBeforeMount: (fn) => fn()
+				onBeforeMount: (fn) => fn(),
+				onFormAssociated: (fn) => this.#formAssociatedCallbacks.push(fn),
+				onFormReset: (fn) => this.#formResetCallbacks.push(fn),
+				onFormDisabled: (fn) => this.#formDisabledCallbacks.push(fn),
+				onFormStateRestore: (fn) => this.#formStateRestoreCallbacks.push(fn)
 			});
 
 			this.#cleanups.push(
