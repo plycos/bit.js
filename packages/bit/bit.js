@@ -287,6 +287,9 @@ export function defineComponent(options) {
 				}));
 			}
 
+			/**
+			 * @type Lifecycle
+			 */
 			const lifecycle = {
 				onBeforeMount: (fn) => fn(),
 				onMounted: (fn) => this.#mountedCallbacks.push(fn),
@@ -305,8 +308,8 @@ export function defineComponent(options) {
 				attrs: resolvedAttrs,
 				props: resolvedProps,
 				emit: emit.bind(this),
-				internals: this.#internals,
-				lifecycle
+				lifecycle,
+				internals: this.#internals
 			});
 
 			this.#cleanups.push(
