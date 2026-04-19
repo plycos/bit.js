@@ -48,7 +48,7 @@ export const nothing = litNothing;
 
 /**
  * @typedef {Object} AttrOptions
- * @property {string} [default=''] - The default value if the attribute is not present.
+ * @property {*} default - The default value if the attribute is not present. Should be the post-coercion type (e.g. 0 for Number, false for Boolean).
  * @property {Function} [type] - Optional coercion function applied to the raw string value (e.g. Number, Boolean).
  */
 
@@ -72,15 +72,43 @@ export const nothing = litNothing;
 /**
  * @typedef {Object.<string, PropOptions>} PropsDefinition
  * A map of prop names to their options.
+ */
+
+/**
+ * Declares an observed attribute with a default value and optional type coercion.
+ *
+ * @param {*} defaultValue
+ * @param {Function} [type] - Optional coercion function (e.g. Number, Boolean).
+ * @returns {AttrOptions}
+ *
+ * @example
+ * attrs: {
+ *     label: attr('Click me'),
+ *     count: attr(0, Number),
+ *     disabled: attr(false, Boolean),
+ * }
+ */
+export function attr(defaultValue, type) {
+	return { default: defaultValue, type };
+}
+
+/**
+ * Declares a prop with a default value.
+ *
+ * @param {*} defaultValue
+ * @returns {PropOptions}
  *
  * @example
  * props: {
- *     user: { default: null },
- *     count: { default: 0 }
+ *     count: prop(0),
+ *     user: prop(null),
  * }
  */
-/**
+export function prop(defaultValue) {
+	return { default: defaultValue };
+}
 
+/**
  * @typedef {Object} EmitOptions
  * @property {boolean} [bubbles=true] - Whether the event bubbles up the DOM tree.
  * @property {boolean} [composed=true] - Whether the event crosses the shadow DOM boundary.
@@ -90,13 +118,23 @@ export const nothing = litNothing;
 /**
  * @typedef {Object.<string, EmitOptions>} EmitsDefinition
  * A map of event names to their options.
+ */
+
+/**
+ * Declares an emittable event with optional configuration.
+ *
+ * @param {EmitOptions} [options={}]
+ * @returns {EmitOptions}
  *
  * @example
  * emits: {
- *     change: { bubbles: true, composed: true },
- *     selected: {}
+ *     change: emitter(),
+ *     selected: emitter({ bubbles: false }),
  * }
  */
+export function emitter(options = {}) {
+	return options;
+}
 
 /**
  * @typedef {Object} Lifecycle
@@ -113,16 +151,22 @@ export const nothing = litNothing;
  */
 
 /**
+ * @template {AttrsDefinition} A
+ * @template {PropsDefinition} P
+ * @template {EmitsDefinition} E
  * @typedef {Object} SetupContext
  * @property {HTMLElement} el - The component's host element.
- * @property {Object.<string, () => *>} attrs - Reactive attr getters, each returning the current attribute value or its default.
- * @property {Object.<string, () => *>} props - Reactive prop getters, each returning the current prop value or its default.
- * @property {(event: string, detail?: *) => boolean} emit - Dispatches a declared CustomEvent from the component. Returns false if the event was canceled.
+ * @property {{ [K in keyof A]: () => A[K]['default'] }} attrs - Reactive attr getters, typed from the attrs definition.
+ * @property {{ [K in keyof P]: () => P[K]['default'] }} props - Reactive prop getters, typed from the props definition.
+ * @property {(event: keyof E & string, detail?: *) => boolean} emit - Dispatches a declared CustomEvent from the component. Returns false if the event was canceled.
  * @property {Lifecycle} lifecycle - Lifecycle hooks for the component. Pass to composables for automatic cleanup.
  * @property {ElementInternals} [internals] - The ElementInternals instance, available when formAssociated is true.
  */
 
 /**
+ * @template {AttrsDefinition} A
+ * @template {PropsDefinition} P
+ * @template {EmitsDefinition} E
  * @typedef {Object} ComponentOptions
  * @property {string} name
  * Custom element tag name (must contain a hyphen).
@@ -130,20 +174,20 @@ export const nothing = litNothing;
  * @property {boolean} [shadow=false]
  * Attach a shadow root instead of rendering into the element directly.
  *
- * @property {AttrsDefinition} [attrs]
+ * @property {A} [attrs]
  * HTML attributes to observe. Each attr is backed by a signal updated via attributeChangedCallback.
  * Available as a getter via the setup context. Optionally coerced via the type option.
  *
- * @property {PropsDefinition} [props]
+ * @property {P} [props]
  * JS-only props passed to the component programmatically. Each prop is wrapped in a signal
  * and available as a getter via the setup context. Falls back to its default value
  * until the property is set by a parent.
  *
- * @property {EmitsDefinition} [emits]
+ * @property {E} [emits]
  * Declares the custom events this component can dispatch. Each event is dispatched via
  * the emit function in the setup context.
  *
- * @property {(context: SetupContext) => () => TemplateResult} setup
+ * @property {(context: SetupContext<A, P, E>) => () => TemplateResult} setup
  * Runs once on connect. Returns a render function that is wrapped in an effect -
  * any signals read inside will cause it to re-run and patch only the changed DOM nodes.
  *
@@ -161,7 +205,10 @@ export const nothing = litNothing;
  * Defines a native web component backed by lit-html rendering and optional reactive state.
  * Re-renders automatically when signals read inside the render function change.
  *
- * @param {ComponentOptions} options
+ * @template {AttrsDefinition} A
+ * @template {PropsDefinition} P
+ * @template {EmitsDefinition} E
+ * @param {ComponentOptions<A, P, E>} options
  * @returns {typeof HTMLElement} The registered custom element class
  *
  * @example
