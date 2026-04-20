@@ -243,6 +243,7 @@ export function defineComponent(options) {
 	class BitComponent extends HTMLElement {
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
 		#mounted = false;
+		#firstRender = true;
 		#tmpl = null;
 		#cleanups = [];
 		#attrSignalSetters = {};
@@ -274,10 +275,15 @@ export function defineComponent(options) {
 				const [get, set] = signal(config.default);
 				Object.defineProperty(this, key, {
 					get: () => get(),
-					set: (val) => set(val),
-					configurable: true
+					set: (val) => set(val)
 				});
 				this.#resolvedProps[key] = get;
+			});
+
+			Object.entries(attrs).forEach(([key, config]) => {
+				const [get, set] = signal(config.default ?? '');
+				this.#attrSignalSetters[key] = set;
+				this.#resolvedAttrs[key] = get;
 			});
 		}
 
@@ -337,10 +343,9 @@ export function defineComponent(options) {
 
 			Object.entries(attrs).forEach(([key, config]) => {
 				const raw = this.getAttribute(key);
-				const initial = raw !== null ? coerce(raw, config.type) : (config.default ?? '');
-				const [get, set] = signal(initial);
-				this.#attrSignalSetters[key] = set;
-				this.#resolvedAttrs[key] = get;
+				if (raw !== null) {
+					this.#attrSignalSetters[key](coerce(raw, config.type));
+				}
 			});
 
 			/** @type {Lifecycle} */
@@ -369,7 +374,11 @@ export function defineComponent(options) {
 			this.#cleanups.push(
 				effect(() => {
 					render(this.#tmpl(), this.#root);
-					this.#updatedCallbacks.forEach(fn => fn());
+					if (this.#firstRender) {
+						this.#firstRender = false;
+					} else {
+						this.#updatedCallbacks.forEach(fn => fn());
+					}
 				})
 			);
 
