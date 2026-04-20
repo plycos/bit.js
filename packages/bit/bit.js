@@ -242,8 +242,12 @@ export function defineComponent(options) {
 
 	class BitComponent extends HTMLElement {
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
+		#mounted = false;
+		#tmpl = null;
 		#cleanups = [];
 		#attrSignalSetters = {};
+		#resolvedAttrs = {};
+		#resolvedProps = {};
 		#mountedCallbacks = [];
 		#unmountedCallbacks = [];
 		#adoptedCallbacks = [];
@@ -261,6 +265,30 @@ export function defineComponent(options) {
 
 		static get observedAttributes() {
 			return attrKeys;
+		}
+
+		constructor() {
+			super();
+
+			Object.entries(props).forEach(([key, config]) => {
+				const [get, set] = signal(config.default);
+				Object.defineProperty(this, key, {
+					get: () => get(),
+					set: (val) => set(val),
+					configurable: true
+				});
+				this.#resolvedProps[key] = get;
+			});
+		}
+
+		#emit(eventName, detail) {
+			const config = emits[eventName] ?? {};
+			return this.dispatchEvent(new CustomEvent(eventName, {
+				detail,
+				bubbles: config.bubbles ?? true,
+				composed: config.composed ?? true,
+				cancelable: config.cancelable ?? false
+			}));
 		}
 
 		attributeChangedCallback(attrName, oldValue, newValue) {
@@ -294,6 +322,9 @@ export function defineComponent(options) {
 		}
 
 		connectedCallback() {
+			if (this.#mounted) return;
+			this.#mounted = true;
+
 			if (styles) {
 				if (shadow) {
 					const stylesheet = new CSSStyleSheet();
@@ -304,39 +335,15 @@ export function defineComponent(options) {
 				}
 			}
 
-			const resolvedAttrs = {};
 			Object.entries(attrs).forEach(([key, config]) => {
 				const raw = this.getAttribute(key);
 				const initial = raw !== null ? coerce(raw, config.type) : (config.default ?? '');
 				const [get, set] = signal(initial);
 				this.#attrSignalSetters[key] = set;
-				resolvedAttrs[key] = get;
+				this.#resolvedAttrs[key] = get;
 			});
 
-			const resolvedProps = {};
-			Object.entries(props).forEach(([key, config]) => {
-				const [get, set] = signal(config.default);
-				Object.defineProperty(this, key, {
-					get: () => get(),
-					set: (val) => set(val),
-					configurable: true
-				});
-				resolvedProps[key] = get;
-			});
-
-			function emit(eventName, detail) {
-				const config = emits[eventName] ?? {};
-				return this.dispatchEvent(new CustomEvent(eventName, {
-					detail,
-					bubbles: config.bubbles ?? true,
-					composed: config.composed ?? true,
-					cancelable: config.cancelable ?? false
-				}));
-			}
-
-			/**
-			 * @type Lifecycle
-			 */
+			/** @type {Lifecycle} */
 			const lifecycle = {
 				onBeforeMount: (fn) => fn(),
 				onMounted: (fn) => this.#mountedCallbacks.push(fn),
@@ -350,18 +357,18 @@ export function defineComponent(options) {
 				onFormStateRestore: (fn) => this.#formStateRestoreCallbacks.push(fn)
 			};
 
-			const tmpl = setup({
+			this.#tmpl = setup({
 				el: this,
-				attrs: resolvedAttrs,
-				props: resolvedProps,
-				emit: emit.bind(this),
+				attrs: this.#resolvedAttrs,
+				props: this.#resolvedProps,
+				emit: this.#emit.bind(this),
 				lifecycle,
 				internals: this.#internals
 			});
 
 			this.#cleanups.push(
 				effect(() => {
-					render(tmpl(), this.#root);
+					render(this.#tmpl(), this.#root);
 					this.#updatedCallbacks.forEach(fn => fn());
 				})
 			);
