@@ -238,6 +238,7 @@ function defineComponent(options, config = {}) {
 	class BitComponent extends HTMLElement {
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
 		#connected = false;
+		#initialized = false;
 		#firstRender = true;
 		#tmpl = null;
 		#cleanups = [];
@@ -354,22 +355,26 @@ function defineComponent(options, config = {}) {
 				}
 			}
 
-			attrEntries.forEach(([key, config]) => {
-				const raw = this.getAttribute(key);
-				if (raw !== null) {
-					this.#attrSignalSetters[key](coerce(raw, config.type));
-				}
-			});
+			if (!this.#initialized) {
+				this.#initialized = true;
 
-			this.#tmpl = setup({
-				el: this,
-				attrs: this.#resolvedAttrs,
-				props: this.#resolvedProps,
-				emit: this.#boundEmit,
-				lifecycle: this.#lifecycle,
-				track: this.#boundTrack,
-				internals: this.#internals
-			});
+				attrEntries.forEach(([key, config]) => {
+					const raw = this.getAttribute(key);
+					if (raw !== null) {
+						this.#attrSignalSetters[key](coerce(raw, config.type));
+					}
+				});
+
+				this.#tmpl = setup({
+					el: this,
+					attrs: this.#resolvedAttrs,
+					props: this.#resolvedProps,
+					emit: this.#boundEmit,
+					lifecycle: this.#lifecycle,
+					track: this.#boundTrack,
+					internals: this.#internals
+				});
+			}
 
 			if (renderer && !renderless) {
 				this.#cleanups.push(
@@ -395,15 +400,6 @@ function defineComponent(options, config = {}) {
 			this.#cleanups.length = 0;
 			this.#connected = false;
 			this.#firstRender = true;
-			this.#connectedCallbacks.length = 0;
-			this.#disconnectedCallbacks.length = 0;
-			this.#updatedCallbacks.length = 0;
-			this.#adoptedCallbacks.length = 0;
-			this.#attrChangedCallbacks.length = 0;
-			this.#formAssociatedCallbacks.length = 0;
-			this.#formResetCallbacks.length = 0;
-			this.#formDisabledCallbacks.length = 0;
-			this.#formStateRestoreCallbacks.length = 0;
 		}
 	}
 
