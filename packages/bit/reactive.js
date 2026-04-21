@@ -7,6 +7,16 @@ import { Signal } from '../vendor/signal-polyfill.js';
  */
 
 /**
+ * Symbol used to identify reactive signal getters.
+ * Attached to getter functions returned by `signal` and `computed`
+ * so the renderer can distinguish them from plain functions and wrap
+ * them in effects for fine-grained DOM updates.
+ *
+ * @internal
+ */
+export const SIGNAL = symbol('bit.signal');
+
+/**
  * Creates a reactive state signal.
  *
  * @template T
@@ -21,7 +31,13 @@ import { Signal } from '../vendor/signal-polyfill.js';
  */
 export function signal(value) {
 	const s = new Signal.State(value);
-	return [() => s.get(), (val) => s.set(val)];
+	const get = () => s.get();
+	const set = (val) => s.set(val);
+	get[SIGNAL] = true;
+	return [
+		get,
+		set
+	];
 }
 
 /**
@@ -38,7 +54,9 @@ export function signal(value) {
  */
 export function computed(fn) {
 	const c = new Signal.Computed(fn);
-	return () => c.get();
+	const get = () => c.get();
+	get[SIGNAL] = true;
+	return get;
 }
 
 /**
