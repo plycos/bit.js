@@ -235,6 +235,8 @@ function defineComponent(options, config = {}) {
 		shadowSheet.replaceSync(styles);
 	}
 
+	let stylesInjected = false;
+
 	class BitComponent extends HTMLElement {
 		// DOM
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
@@ -361,7 +363,8 @@ function defineComponent(options, config = {}) {
 			if (styles) {
 				if (shadowSheet) {
 					this.#root.adoptedStyleSheets = [shadowSheet];
-				} else {
+				} else if (!stylesInjected) {
+					stylesInjected = true;
 					injectGlobalStyles(name, styles);
 				}
 			}
