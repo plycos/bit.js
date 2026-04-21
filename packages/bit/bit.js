@@ -358,7 +358,7 @@ function defineComponent(options, config = {}) {
 				props: this.#resolvedProps,
 				emit: this.#emit.bind(this),
 				lifecycle,
-				track: this.#track,
+				track: this.#track.bind(this),
 				internals: this.#internals
 			});
 
@@ -382,6 +382,17 @@ function defineComponent(options, config = {}) {
 			this.#disconnectedCallbacks.forEach(fn => fn());
 			this.#cleanups.forEach((fn) => fn());
 			this.#cleanups = [];
+			this.#connected = false;
+			this.#firstRender = true;
+			this.#connectedCallbacks = [];
+			this.#disconnectedCallbacks = [];
+			this.#updatedCallbacks = [];
+			this.#adoptedCallbacks = [];
+			this.#attrChangedCallbacks = [];
+			this.#formAssociatedCallbacks = [];
+			this.#formResetCallbacks = [];
+			this.#formDisabledCallbacks = [];
+			this.#formStateRestoreCallbacks = [];
 		}
 	}
 
