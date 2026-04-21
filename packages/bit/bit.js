@@ -360,16 +360,16 @@ function defineComponent(options, config = {}) {
 			if (this.#connected) return;
 			this.#connected = true;
 
-			if (styles) {
-				if (shadowSheet) {
-					this.#root.adoptedStyleSheets = [shadowSheet];
-				} else if (!stylesInjected) {
-					stylesInjected = true;
-					injectGlobalStyles(name, styles);
-				}
-			}
-
 			if (!this.#initialized) {
+				if (styles) {
+					if (shadowSheet) {
+						this.#root.adoptedStyleSheets = [shadowSheet];
+					} else if (!stylesInjected) {
+						stylesInjected = true;
+						injectGlobalStyles(name, styles);
+					}
+				}
+
 				this.#initialized = true;
 
 				attrEntries.forEach(([key, config]) => {
