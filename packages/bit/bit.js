@@ -226,6 +226,14 @@ function defineComponent(options, config = {}) {
 	} = options;
 
 	const attrKeys = Object.keys(attrs);
+	const attrEntries = Object.entries(attrs);
+	const propEntries = Object.entries(props);
+
+	let shadowSheet = null;
+	if (shadow && styles) {
+		shadowSheet = new CSSStyleSheet();
+		shadowSheet.replaceSync(styles);
+	}
 
 	class BitComponent extends HTMLElement {
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
@@ -246,6 +254,9 @@ function defineComponent(options, config = {}) {
 		#formDisabledCallbacks = [];
 		#formStateRestoreCallbacks = [];
 		#internals = formAssociated ? this.attachInternals() : null;
+		#boundEmit = this.#emit.bind(this);
+		#boundTrack = this.#track.bind(this);
+		#lifecycle = null;
 
 		static get formAssociated() {
 			return formAssociated;
@@ -258,7 +269,7 @@ function defineComponent(options, config = {}) {
 		constructor() {
 			super();
 
-			Object.entries(props).forEach(([key, config]) => {
+			propEntries.forEach(([key, config]) => {
 				const [get, set] = signal(config.default);
 				Object.defineProperty(this, key, {
 					get: () => get(),
@@ -267,11 +278,24 @@ function defineComponent(options, config = {}) {
 				this.#resolvedProps[key] = get;
 			});
 
-			Object.entries(attrs).forEach(([key, config]) => {
+			attrEntries.forEach(([key, config]) => {
 				const [get, set] = signal(config.default ?? '');
 				this.#attrSignalSetters[key] = set;
 				this.#resolvedAttrs[key] = get;
 			});
+
+			/** @type {Lifecycle} */
+			this.#lifecycle = {
+				onConnected: (fn) => this.#connectedCallbacks.push(fn),
+				onDisconnected: (fn) => this.#disconnectedCallbacks.push(fn),
+				onUpdated: (fn) => this.#updatedCallbacks.push(fn),
+				onAdopted: (fn) => this.#adoptedCallbacks.push(fn),
+				onAttributeChanged: (fn) => this.#attrChangedCallbacks.push(fn),
+				onFormAssociated: (fn) => this.#formAssociatedCallbacks.push(fn),
+				onFormReset: (fn) => this.#formResetCallbacks.push(fn),
+				onFormDisabled: (fn) => this.#formDisabledCallbacks.push(fn),
+				onFormStateRestore: (fn) => this.#formStateRestoreCallbacks.push(fn)
+			};
 		}
 
 		#emit(eventName, detail) {
@@ -323,42 +347,27 @@ function defineComponent(options, config = {}) {
 			this.#connected = true;
 
 			if (styles) {
-				if (shadow) {
-					const stylesheet = new CSSStyleSheet();
-					stylesheet.replaceSync(styles);
-					this.#root.adoptedStyleSheets = [stylesheet];
+				if (shadowSheet) {
+					this.#root.adoptedStyleSheets = [shadowSheet];
 				} else {
 					injectGlobalStyles(name, styles);
 				}
 			}
 
-			Object.entries(attrs).forEach(([key, config]) => {
+			attrEntries.forEach(([key, config]) => {
 				const raw = this.getAttribute(key);
 				if (raw !== null) {
 					this.#attrSignalSetters[key](coerce(raw, config.type));
 				}
 			});
 
-			/** @type {Lifecycle} */
-			const lifecycle = {
-				onConnected: (fn) => this.#connectedCallbacks.push(fn),
-				onDisconnected: (fn) => this.#disconnectedCallbacks.push(fn),
-				onUpdated: (fn) => this.#updatedCallbacks.push(fn),
-				onAdopted: (fn) => this.#adoptedCallbacks.push(fn),
-				onAttributeChanged: (fn) => this.#attrChangedCallbacks.push(fn),
-				onFormAssociated: (fn) => this.#formAssociatedCallbacks.push(fn),
-				onFormReset: (fn) => this.#formResetCallbacks.push(fn),
-				onFormDisabled: (fn) => this.#formDisabledCallbacks.push(fn),
-				onFormStateRestore: (fn) => this.#formStateRestoreCallbacks.push(fn)
-			};
-
 			this.#tmpl = setup({
 				el: this,
 				attrs: this.#resolvedAttrs,
 				props: this.#resolvedProps,
-				emit: this.#emit.bind(this),
-				lifecycle,
-				track: this.#track.bind(this),
+				emit: this.#boundEmit,
+				lifecycle: this.#lifecycle,
+				track: this.#boundTrack,
 				internals: this.#internals
 			});
 
@@ -375,24 +384,26 @@ function defineComponent(options, config = {}) {
 				);
 			}
 
-			queueMicrotask(() => this.#connectedCallbacks.forEach(fn => fn()));
+			if (this.#connectedCallbacks.length > 0) {
+				queueMicrotask(() => this.#connectedCallbacks.forEach(fn => fn()));
+			}
 		}
 
 		disconnectedCallback() {
 			this.#disconnectedCallbacks.forEach(fn => fn());
 			this.#cleanups.forEach((fn) => fn());
-			this.#cleanups = [];
+			this.#cleanups.length = 0;
 			this.#connected = false;
 			this.#firstRender = true;
-			this.#connectedCallbacks = [];
-			this.#disconnectedCallbacks = [];
-			this.#updatedCallbacks = [];
-			this.#adoptedCallbacks = [];
-			this.#attrChangedCallbacks = [];
-			this.#formAssociatedCallbacks = [];
-			this.#formResetCallbacks = [];
-			this.#formDisabledCallbacks = [];
-			this.#formStateRestoreCallbacks = [];
+			this.#connectedCallbacks.length = 0;
+			this.#disconnectedCallbacks.length = 0;
+			this.#updatedCallbacks.length = 0;
+			this.#adoptedCallbacks.length = 0;
+			this.#attrChangedCallbacks.length = 0;
+			this.#formAssociatedCallbacks.length = 0;
+			this.#formResetCallbacks.length = 0;
+			this.#formDisabledCallbacks.length = 0;
+			this.#formStateRestoreCallbacks.length = 0;
 		}
 	}
 
