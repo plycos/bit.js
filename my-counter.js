@@ -1,13 +1,16 @@
+import { createBit } from './packages/bit/bit.js';
 import {
-    defineComponent,
+    render,
     html,
     css
-} from './packages/bit/bit.js';
+} from './packages/bit/renderer.js';
 import {
     signal,
     computed,
     watch
 } from './packages/bit/reactive.js';
+
+const defineComponent = createBit({ renderer: render });
 
 const myCounter = defineComponent({
     name: 'my-counter',

@@ -1,50 +1,26 @@
-import {html as litHtml, nothing as litNothing, render} from "../vendor/lit-html.js";
 import {effect, signal} from "./reactive.js";
 
 /**
- * @typedef {Object} TemplateResult
- * A lit-html template result returned by the `html` tagged template literal.
- * Passed to lit-html's render function to efficiently patch the DOM.
+ * @typedef {Object} BitConfiguration
+ * @property {((template: *, container: Element | ShadowRoot) => void) | null} [renderer=null] - The render function used to mount and update templates.
  */
 
 /**
- * Tagged template literal for declaring HTML templates.
- * Dynamic expressions are efficiently updated in the DOM when values change.
- * Re-exported from lit-html.
+ * Creates a defineComponent factory bound to a renderer.
+ * Omit the renderer for templateless components.
  *
- * @type {function(string[], ...any): TemplateResult}
- *
- * @example
- * html`<button @click=${handler}>Count: ${count()}</button>`
- */
-export const html = litHtml;
-
-/**
- * Tagged template literal for CSS strings. Exists so editors provide
- * syntax highlighting inside the template literal.
- *
- * @param {string[]} strings
- * @param {...*} values
- * @returns {string}
+ * @param {BitConfiguration} [config]
+ * @returns {DefineComponent}
  *
  * @example
- * const styles = css`
- *   p { color: red; }
- * `;
- */
-export const css = (strings, ...values) =>
-	String.raw({ raw: strings }, ...values);
-
-/**
- * Sentinel value that renders nothing. Useful for conditional rendering.
- * Re-exported from lit-html.
+ * import { createBit } from 'bit';
+ * import { render } from 'bit/renderer';
  *
- * @type {symbol}
- *
- * @example
- * html`${isVisible ? html`<p>Hello</p>` : nothing}`
+ * const defineComponent = createBit({ renderer: render });
  */
-export const nothing = litNothing;
+export function createBit(config = {}) {
+	return (options) => defineComponent(options, config);
+}
 
 /**
  * @typedef {Object} AttrOptions
@@ -138,9 +114,8 @@ export function emitter(options = {}) {
 
 /**
  * @typedef {Object} Lifecycle
- * @property {(fn: () => void) => void} onBeforeMount - Runs synchronously before the first render.
- * @property {(fn: () => void) => void} onMounted - Runs after the first render, safe to access the DOM and template refs.
- * @property {(fn: () => void) => void} onUnmounted - Runs when the component is removed from the DOM.
+ * @property {(fn: () => void) => void} onConnected - Runs after the first render, safe to access the DOM and template refs.
+ * @property {(fn: () => void) => void} onDisconnected - Runs when the component is removed from the DOM.
  * @property {(fn: () => void) => void} onUpdated - Runs after every re-render.
  * @property {(fn: () => void) => void} onAdopted - Runs when the component is moved to a new document.
  * @property {(fn: (name: string, oldValue: string|null, newValue: string|null) => void) => void} onAttributeChanged - Runs when an observed attribute changes.
@@ -160,6 +135,7 @@ export function emitter(options = {}) {
  * @property {{ [K in keyof P]: () => P[K]['default'] }} props - Reactive prop getters, typed from the props definition.
  * @property {(event: keyof E & string, detail?: *) => boolean} emit - Dispatches a declared CustomEvent from the component. Returns false if the event was canceled.
  * @property {Lifecycle} lifecycle - Lifecycle hooks for the component. Pass to composables for automatic cleanup.
+ * @property {(fn: () => void) => void} track - Registers a cleanup function to be called when the component disconnects.
  * @property {ElementInternals} [internals] - The ElementInternals instance, available when formAssociated is true.
  */
 
@@ -174,6 +150,10 @@ export function emitter(options = {}) {
  * @property {boolean} [shadow=false]
  * Attach a shadow root instead of rendering into the element directly.
  *
+ * @property {boolean} [renderless=false]
+ * Enables renderless mode for components that do not render a template. This is particularly useful for
+ * light-dom components that progressively enhance elements that it encapsulates
+ *
  * @property {A} [attrs]
  * HTML attributes to observe. Each attr is backed by a signal updated via attributeChangedCallback.
  * Available as a getter via the setup context. Optionally coerced via the type option.
@@ -187,9 +167,9 @@ export function emitter(options = {}) {
  * Declares the custom events this component can dispatch. Each event is dispatched via
  * the emit function in the setup context.
  *
- * @property {(context: SetupContext<A, P, E>) => () => TemplateResult} setup
+ * @property {(context: SetupContext<A, P, E>) => () => *} setup
  * Runs once on connect. Returns a render function that is wrapped in an effect -
- * any signals read inside will cause it to re-run and patch only the changed DOM nodes.
+ * any signals read inside will cause it to re-run.
  *
  * @property {string} [styles]
  * CSS string injected into the shadow root (shadow mode) or as a scoped `<style>` tag (light DOM).
@@ -202,7 +182,7 @@ export function emitter(options = {}) {
  */
 
 /**
- * Defines a native web component backed by lit-html rendering and optional reactive state.
+ * Defines a native web component with optional reactive state.
  * Re-renders automatically when signals read inside the render function change.
  *
  * @template {AttrsDefinition} A
@@ -212,6 +192,11 @@ export function emitter(options = {}) {
  * @returns {typeof HTMLElement} The registered custom element class
  *
  * @example
+ * import { createBit } from 'bit';
+ * import { render, html } from 'bit-lit';
+ *
+ * const defineComponent = createBit({ renderer: render });
+ *
  * const MyCounter = defineComponent({
  *   name: 'my-counter',
  *   setup: () => {
@@ -225,10 +210,12 @@ export function emitter(options = {}) {
  *   },
  * });
  */
-export function defineComponent(options) {
+function defineComponent(options, config = {}) {
+	const { renderer = null } = config;
 	const {
 		name,
 		shadow = false,
+		renderless = false,
 		attrs = {},
 		props = {},
 		emits = {},
@@ -242,15 +229,15 @@ export function defineComponent(options) {
 
 	class BitComponent extends HTMLElement {
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
-		#mounted = false;
+		#connected = false;
 		#firstRender = true;
 		#tmpl = null;
 		#cleanups = [];
 		#attrSignalSetters = {};
 		#resolvedAttrs = {};
 		#resolvedProps = {};
-		#mountedCallbacks = [];
-		#unmountedCallbacks = [];
+		#connectedCallbacks = [];
+		#disconnectedCallbacks = [];
 		#adoptedCallbacks = [];
 		#attrChangedCallbacks = [];
 		#updatedCallbacks = [];
@@ -297,6 +284,10 @@ export function defineComponent(options) {
 			}));
 		}
 
+		#track(fn) {
+			this.#cleanups.push(fn);
+		}
+
 		attributeChangedCallback(attrName, oldValue, newValue) {
 			if (oldValue === newValue) return;
 			const setter = this.#attrSignalSetters[attrName];
@@ -328,8 +319,8 @@ export function defineComponent(options) {
 		}
 
 		connectedCallback() {
-			if (this.#mounted) return;
-			this.#mounted = true;
+			if (this.#connected) return;
+			this.#connected = true;
 
 			if (styles) {
 				if (shadow) {
@@ -350,9 +341,8 @@ export function defineComponent(options) {
 
 			/** @type {Lifecycle} */
 			const lifecycle = {
-				onBeforeMount: (fn) => fn(),
-				onMounted: (fn) => this.#mountedCallbacks.push(fn),
-				onUnmounted: (fn) => this.#unmountedCallbacks.push(fn),
+				onConnected: (fn) => this.#connectedCallbacks.push(fn),
+				onDisconnected: (fn) => this.#disconnectedCallbacks.push(fn),
 				onUpdated: (fn) => this.#updatedCallbacks.push(fn),
 				onAdopted: (fn) => this.#adoptedCallbacks.push(fn),
 				onAttributeChanged: (fn) => this.#attrChangedCallbacks.push(fn),
@@ -368,25 +358,28 @@ export function defineComponent(options) {
 				props: this.#resolvedProps,
 				emit: this.#emit.bind(this),
 				lifecycle,
+				track: this.#track,
 				internals: this.#internals
 			});
 
-			this.#cleanups.push(
-				effect(() => {
-					render(this.#tmpl(), this.#root);
-					if (this.#firstRender) {
-						this.#firstRender = false;
-					} else {
-						this.#updatedCallbacks.forEach(fn => fn());
-					}
-				})
-			);
+			if (renderer && !renderless) {
+				this.#cleanups.push(
+					effect(() => {
+						renderer(this.#tmpl(), this.#root);
+						if (this.#firstRender) {
+							this.#firstRender = false;
+						} else {
+							this.#updatedCallbacks.forEach(fn => fn());
+						}
+					})
+				);
+			}
 
-			queueMicrotask(() => this.#mountedCallbacks.forEach(fn => fn()));
+			queueMicrotask(() => this.#connectedCallbacks.forEach(fn => fn()));
 		}
 
 		disconnectedCallback() {
-			this.#unmountedCallbacks.forEach(fn => fn());
+			this.#disconnectedCallbacks.forEach(fn => fn());
 			this.#cleanups.forEach((fn) => fn());
 			this.#cleanups = [];
 		}
