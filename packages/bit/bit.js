@@ -236,28 +236,39 @@ function defineComponent(options, config = {}) {
 	}
 
 	class BitComponent extends HTMLElement {
+		// DOM
 		#root = shadow ? this.attachShadow({ mode: "open" }) : this;
+		#internals = formAssociated ? this.attachInternals() : null;
+
+		// State flags
 		#connected = false;
 		#initialized = false;
 		#firstRender = true;
-		#tmpl = null;
-		#cleanups = [];
+
+		// Reactive state
 		#attrSignalSetters = {};
 		#resolvedAttrs = {};
 		#resolvedProps = {};
+
+		// Rendering
+		#tmpl = null;
+		#cleanups = [];
+
+		// Bound methods / context
+		#boundEmit = this.#emit.bind(this);
+		#boundTrack = this.#track.bind(this);
+		#lifecycle = null;
+
+		// Lifecycle callbacks
 		#connectedCallbacks = [];
 		#disconnectedCallbacks = [];
+		#updatedCallbacks = [];
 		#adoptedCallbacks = [];
 		#attrChangedCallbacks = [];
-		#updatedCallbacks = [];
 		#formAssociatedCallbacks = [];
 		#formResetCallbacks = [];
 		#formDisabledCallbacks = [];
 		#formStateRestoreCallbacks = [];
-		#internals = formAssociated ? this.attachInternals() : null;
-		#boundEmit = this.#emit.bind(this);
-		#boundTrack = this.#track.bind(this);
-		#lifecycle = null;
 
 		static get formAssociated() {
 			return formAssociated;
