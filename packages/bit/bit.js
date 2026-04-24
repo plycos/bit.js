@@ -403,9 +403,7 @@ function defineComponent(options, config = {}) {
 				);
 			}
 
-			if (this.#connectedCallbacks.length > 0) {
-				queueMicrotask(() => this.#connectedCallbacks.forEach(fn => fn()));
-			}
+			this.#connectedCallbacks.forEach(fn => fn());
 		}
 
 		disconnectedCallback() {
