@@ -114,7 +114,7 @@ export function emitter(options = {}) {
 
 /**
  * @typedef {Object} Lifecycle
- * @property {(fn: () => void) => void} onConnected - Runs after the first render, safe to access the DOM and template refs.
+ * @property {(fn: () => (() => void) | void) => void} onConnected - Runs each time the component connects to the DOM. Optionally return a cleanup function to run on disconnect.
  * @property {(fn: () => void) => void} onDisconnected - Runs when the component is removed from the DOM.
  * @property {(fn: () => void) => void} onUpdated - Runs after every re-render.
  * @property {(fn: () => void) => void} onAdopted - Runs when the component is moved to a new document.
@@ -135,7 +135,6 @@ export function emitter(options = {}) {
  * @property {{ [K in keyof P]: () => P[K]['default'] }} props - Reactive prop getters, typed from the props definition.
  * @property {(event: keyof E & string, detail?: *) => boolean} emit - Dispatches a declared CustomEvent from the component. Returns false if the event was canceled.
  * @property {Lifecycle} lifecycle - Lifecycle hooks for the component. Pass to composables for automatic cleanup.
- * @property {(fn: () => void) => void} track - Registers a cleanup function to be called when the component disconnects.
  * @property {ElementInternals} [internals] - The ElementInternals instance, available when formAssociated is true.
  */
 
@@ -254,11 +253,10 @@ function defineComponent(options, config = {}) {
 
 		// Rendering
 		#tmpl = null;
-		#cleanups = [];
+		#effectCleanup = [];
 
 		// Bound methods / context
 		#boundEmit = this.#emit.bind(this);
-		#boundTrack = this.#track.bind(this);
 		#lifecycle = null;
 
 		// Lifecycle callbacks
@@ -322,10 +320,6 @@ function defineComponent(options, config = {}) {
 			}));
 		}
 
-		#track(fn) {
-			this.#cleanups.push(fn);
-		}
-
 		attributeChangedCallback(attrName, oldValue, newValue) {
 			if (oldValue === newValue) return;
 			const setter = this.#attrSignalSetters[attrName];
@@ -385,13 +379,12 @@ function defineComponent(options, config = {}) {
 					props: this.#resolvedProps,
 					emit: this.#boundEmit,
 					lifecycle: this.#lifecycle,
-					track: this.#boundTrack,
 					internals: this.#internals
 				});
 			}
 
 			if (renderer && !renderless) {
-				this.#cleanups.push(
+				this.#effectCleanup.push(
 					effect(() => {
 						renderer(this.#tmpl(), this.#root);
 						if (this.#firstRender) {
@@ -403,13 +396,18 @@ function defineComponent(options, config = {}) {
 				);
 			}
 
-			this.#connectedCallbacks.forEach(fn => fn());
+			this.#connectedCallbacks.forEach(fn => {
+				const cleanup = fn();
+				if (typeof cleanup === 'function') {
+					this.#effectCleanup.push(cleanup);
+				}
+			});
 		}
 
 		disconnectedCallback() {
+			this.#effectCleanup.forEach(fn => fn());
+			this.#effectCleanup.length = 0;
 			this.#disconnectedCallbacks.forEach(fn => fn());
-			this.#cleanups.forEach((fn) => fn());
-			this.#cleanups.length = 0;
 			this.#connected = false;
 			this.#firstRender = true;
 		}
